@@ -91,6 +91,7 @@ impl RatchetState {
         self.receiving_chain = Some(recv_chain);
         self.sending_chain = None; // 🔥 important
         self.dh_remote = Some(remote_pub);
+        self.msg_recv = 0;
     }
 
     pub fn dh_ratchet_send(&mut self) {
@@ -146,8 +147,12 @@ impl RatchetState {
             return decrypt(&msg_key, ciphertext, nonce, header.as_bytes());
         }
 
+        if self.dh_remote.as_ref() == Some(&header.dh_pub) && header.msg_num < self.msg_recv {
+            return Err("Message replay detected".to_string());
+        }
+
         if self.dh_remote.as_ref() != Some(&header.dh_pub) {
-            self.skip_message_keys(header.prev_chain_len).unwrap();
+            self.skip_message_keys(header.prev_chain_len)?;
             self.dh_ratchet_receive(header.dh_pub);
             self.prev_chain_len = header.msg_num; // Important: update prev_chain_len after ratchet
         }
@@ -324,6 +329,7 @@ mod tests {
 
         let result = bob.decrypt_message(&ct, header);
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Decryption failed"));
     }
 
     #[test]
@@ -377,5 +383,6 @@ mod tests {
         // Try to decrypt msg1 again → should fail (key was removed)
         let result = bob.decrypt_message(&encrypted[1].0, encrypted[1].1.clone());
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Message replay detected"));
     }
 }
