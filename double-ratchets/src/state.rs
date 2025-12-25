@@ -102,7 +102,7 @@ impl RatchetState {
         self.sending_chain = Some(send_chain);
     }
 
-    pub fn encrypt_message(&mut self, plaintext: &[u8]) -> (Vec<u8>, [u8; 12], Header) {
+    pub fn encrypt_message(&mut self, plaintext: &[u8]) -> (Vec<u8>, Header) {
         if self.sending_chain.is_none() {
             self.dh_ratchet_send();
             self.prev_chain_len = self.msg_send;
@@ -122,15 +122,19 @@ impl RatchetState {
         self.msg_send += 1;
 
         let (ciphertext, nonce) = encrypt(&message_key, plaintext, header.as_bytes());
-        (ciphertext, nonce, header)
+
+        let mut ciphertext_with_nonce = Vec::with_capacity(nonce.len() + ciphertext.len());
+        ciphertext_with_nonce.extend_from_slice(&nonce);
+        ciphertext_with_nonce.extend_from_slice(&ciphertext);
+
+        (ciphertext_with_nonce, header)
     }
 
-    pub fn decrypt_message(
-        &mut self,
-        ciphertext: &[u8],
-        nonce: &[u8; 12],
-        header: Header,
-    ) -> Vec<u8> {
+    pub fn decrypt_message(&mut self, ciphertext_with_nonce: &[u8], header: Header) -> Vec<u8> {
+        assert!(ciphertext_with_nonce.len() >= 12, "ciphertext too short");
+        let (nonce_slice, ciphertext) = ciphertext_with_nonce.split_at(12);
+        let nonce: &[u8; 12] = nonce_slice.try_into().unwrap();
+
         let key_id = (header.dh_pub, header.msg_num);
         if let Some(msg_key) = self.skipped_keys.remove(&key_id) {
             return decrypt(&msg_key, ciphertext, nonce, header.as_bytes());

@@ -14,15 +14,15 @@ fn main() {
     let mut alice = RatchetState::init_sender(shared_secret, bob_dh.public);
     let mut bob = RatchetState::init_receiver(shared_secret, bob_dh);
 
-    let (ciphertext, nonce, header) = alice.encrypt_message(b"Hello Bob!");
+    let (ciphertext, header) = alice.encrypt_message(b"Hello Bob!");
 
     // === Bob receives ===
-    let plaintext = bob.decrypt_message(&ciphertext, &nonce, header);
+    let plaintext = bob.decrypt_message(&ciphertext, header);
     println!("Bob received: {}", String::from_utf8_lossy(&plaintext));
 
     // === Bob replies (triggers DH ratchet) ===
-    let (ciphertext, nonce, header) = bob.encrypt_message(b"Hi Alice!");
+    let (ciphertext, header) = bob.encrypt_message(b"Hi Alice!");
 
-    let plaintext = alice.decrypt_message(&ciphertext, &nonce, header);
+    let plaintext = alice.decrypt_message(&ciphertext, header);
     println!("Alice received: {}", String::from_utf8_lossy(&plaintext));
 }
