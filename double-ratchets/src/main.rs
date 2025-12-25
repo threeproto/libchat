@@ -1,4 +1,4 @@
-use crate::{hkdf::kdf_root, keypair::DhKeyPair, state::RatchetState};
+use crate::{keypair::DhKeyPair, state::RatchetState};
 
 mod aead;
 mod hkdf;
