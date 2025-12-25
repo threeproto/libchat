@@ -130,7 +130,11 @@ impl RatchetState {
         (ciphertext_with_nonce, header)
     }
 
-    pub fn decrypt_message(&mut self, ciphertext_with_nonce: &[u8], header: Header) -> Vec<u8> {
+    pub fn decrypt_message(
+        &mut self,
+        ciphertext_with_nonce: &[u8],
+        header: Header,
+    ) -> Result<Vec<u8>, String> {
         assert!(ciphertext_with_nonce.len() >= 12, "ciphertext too short");
         let (nonce_slice, ciphertext) = ciphertext_with_nonce.split_at(12);
         let nonce: &[u8; 12] = nonce_slice.try_into().unwrap();

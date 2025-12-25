@@ -18,11 +18,17 @@ fn main() {
 
     // === Bob receives ===
     let plaintext = bob.decrypt_message(&ciphertext, header);
-    println!("Bob received: {}", String::from_utf8_lossy(&plaintext));
+    println!(
+        "Bob received: {}",
+        String::from_utf8_lossy(&plaintext.unwrap())
+    );
 
     // === Bob replies (triggers DH ratchet) ===
     let (ciphertext, header) = bob.encrypt_message(b"Hi Alice!");
 
     let plaintext = alice.decrypt_message(&ciphertext, header);
-    println!("Alice received: {}", String::from_utf8_lossy(&plaintext));
+    println!(
+        "Alice received: {}",
+        String::from_utf8_lossy(&plaintext.unwrap())
+    );
 }
