@@ -1,4 +1,5 @@
 mod aead;
+mod errors;
 mod hkdf;
 mod keypair;
 mod state;

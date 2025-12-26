@@ -4,6 +4,7 @@ use x25519_dalek::PublicKey;
 
 use crate::{
     aead::{decrypt, encrypt},
+    errors::RatchetError,
     hkdf::{kdf_chain, kdf_root},
     keypair::DhKeyPair,
     types::{ChainKey, MessageKey, Nonce, RootKey, SharedSecret},
@@ -211,18 +212,23 @@ impl RatchetState {
         &mut self,
         ciphertext_with_nonce: &[u8],
         header: Header,
-    ) -> Result<Vec<u8>, String> {
-        assert!(ciphertext_with_nonce.len() >= 12, "ciphertext too short");
+    ) -> Result<Vec<u8>, RatchetError> {
+        if ciphertext_with_nonce.len() < 12 {
+            return Err(RatchetError::CiphertextTooShort);
+        }
         let (nonce_slice, ciphertext) = ciphertext_with_nonce.split_at(12);
-        let nonce: &Nonce = nonce_slice.try_into().unwrap();
+        let nonce: &Nonce = nonce_slice
+            .try_into()
+            .map_err(|_| RatchetError::InvalidNonce)?;
 
         let key_id = (header.dh_pub, header.msg_num);
         if let Some(msg_key) = self.skipped_keys.remove(&key_id) {
-            return decrypt(&msg_key, ciphertext, nonce, &header.serialized());
+            return decrypt(&msg_key, ciphertext, nonce, &header.serialized())
+                .map_err(|_| RatchetError::DecryptionFailed);
         }
 
         if self.dh_remote.as_ref() == Some(&header.dh_pub) && header.msg_num < self.msg_recv {
-            return Err("Message replay detected".to_string());
+            return Err(RatchetError::MessageReplay);
         }
 
         if self.dh_remote.as_ref() != Some(&header.dh_pub) {
@@ -233,13 +239,17 @@ impl RatchetState {
 
         self.skip_message_keys(header.msg_num)?;
 
-        let chain = self.receiving_chain.as_mut().expect("no receiving chain");
+        let chain = self
+            .receiving_chain
+            .as_mut()
+            .ok_or(RatchetError::MissingReceivingChain)?;
         let (next_chain, message_key) = kdf_chain(chain);
 
         *chain = next_chain;
         self.msg_recv += 1;
 
         decrypt(&message_key, ciphertext, nonce, &header.serialized())
+            .map_err(|_| RatchetError::DecryptionFailed)
     }
 
     /// Advances the receiving chain and stores skipped message keys.
@@ -252,19 +262,23 @@ impl RatchetState {
     ///
     /// * `Ok(())` on success.
     /// * `Err(&'static str)` if too many messages would be skipped (DoS protection).
-    pub fn skip_message_keys(&mut self, until: u32) -> Result<(), &'static str> {
+    pub fn skip_message_keys(&mut self, until: u32) -> Result<(), RatchetError> {
         const MAX_SKIP: u32 = 10;
 
         if self.msg_recv + MAX_SKIP < until {
-            return Err("too many skipped messages");
+            return Err(RatchetError::TooManySkippedMessages);
         }
 
         while self.msg_recv < until {
-            let chain = self.receiving_chain.as_mut().unwrap();
+            let chain = self
+                .receiving_chain
+                .as_mut()
+                .ok_or(RatchetError::MissingReceivingChain)?;
             let (next_chain, msg_key) = kdf_chain(chain);
             *chain = next_chain;
 
-            let key_id = (self.dh_remote.unwrap(), self.msg_recv);
+            let remote = self.dh_remote.ok_or(RatchetError::MissingRemoteDhKey)?;
+            let key_id = (remote, self.msg_recv);
             self.skipped_keys.insert(key_id, msg_key);
             self.msg_recv += 1;
         }
@@ -397,7 +411,7 @@ mod tests {
         // Bob tries to decrypt final — should fail because too many skipped
         let result = bob.decrypt_message(&ct_final, header_final);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "too many skipped messages");
+        assert_eq!(result.unwrap_err(), RatchetError::TooManySkippedMessages);
     }
 
     #[test]
@@ -413,7 +427,7 @@ mod tests {
 
         let result = bob.decrypt_message(&ct, header);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Decryption failed"));
+        assert_eq!(result.unwrap_err(), RatchetError::DecryptionFailed);
     }
 
     #[test]
@@ -467,6 +481,6 @@ mod tests {
         // Try to decrypt msg1 again → should fail (key was removed)
         let result = bob.decrypt_message(&encrypted[1].0, encrypted[1].1.clone());
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Message replay detected"));
+        assert_eq!(result.unwrap_err(), RatchetError::MessageReplay);
     }
 }

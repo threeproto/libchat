@@ -128,6 +128,7 @@ dependencies = [
  "rand",
  "rand_core",
  "sha2",
+ "thiserror",
  "x25519-dalek",
 ]
 
