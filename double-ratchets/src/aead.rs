@@ -4,7 +4,16 @@ use chacha20poly1305::{
 };
 
 /// Encrypts plaintext with the given key and AAD.
-/// Returns the ciphertext and the randomly generated nonce.
+///
+/// # Arguments
+///
+/// * `message_key` - The message key.
+/// * `plaintext` - The plaintext to encrypt.
+/// * `aad` - The additional authenticated data.
+///
+/// # Returns
+///
+/// A tuple containing the ciphertext and the randomly generated nonce.
 pub fn encrypt(message_key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> (Vec<u8>, [u8; 12]) {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(message_key));
     let nonce = rand::random::<[u8; 12]>();
@@ -21,7 +30,17 @@ pub fn encrypt(message_key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> (Vec<u8>
 }
 
 /// Decrypts ciphertext with the given key, nonce, and AAD.
-/// Returns Ok(plaintext) on success, Err on authentication or decryption failure.
+///
+/// # Arguments
+///
+/// * `message_key` - The message key.
+/// * `ciphertext` - The ciphertext to decrypt.
+/// * `nonce` - The nonce used for encryption.
+/// * `aad` - The additional authenticated data.
+///
+/// # Returns
+///
+/// Ok(plaintext) on success, Err on authentication or decryption failure.
 pub fn decrypt(
     message_key: &[u8; 32],
     ciphertext: &[u8],

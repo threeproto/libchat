@@ -8,6 +8,11 @@ use crate::{
     keypair::DhKeyPair,
 };
 
+/// Represents the local state of the Double Ratchet algorithm for one conversation.
+///
+/// This struct maintains all keys and counters required to perform the Double Ratchet
+/// as specified in the Signal protocol, providing end-to-end encryption with forward
+/// secrecy and post-compromise security.
 #[derive(Clone)]
 pub struct RatchetState {
     pub root_key: [u8; 32],
@@ -25,6 +30,7 @@ pub struct RatchetState {
     pub skipped_keys: HashMap<(PublicKey, u32), [u8; 32]>,
 }
 
+/// Public header attached to every encrypted message (unencrypted but authenticated).
 #[derive(Clone)]
 pub struct Header {
     pub dh_pub: PublicKey,
@@ -39,7 +45,19 @@ impl Header {
 }
 
 impl RatchetState {
-    /// Initialize the party that sends first (Alice)
+    /// Initializes the party that sends the first message.
+    ///
+    /// Performs the initial Diffie-Hellman computation with the remote public key
+    /// and derives the initial root and sending chain keys.
+    ///
+    /// # Arguments
+    ///
+    /// * `shared_secret` - Pre-shared secret (e.g., from X3DH).
+    /// * `remote_pub`    - Remote party's public key for the initial DH.
+    ///
+    /// # Returns
+    ///
+    /// A new `RatchetState` ready to send the first message.
     pub fn init_sender(shared_secret: [u8; 32], remote_pub: PublicKey) -> Self {
         let dh_self = DhKeyPair::generate();
 
@@ -64,7 +82,18 @@ impl RatchetState {
         }
     }
 
-    /// Initialize the party that receives first (Bob)
+    /// Initializes the party that receives the first message.
+    ///
+    /// No chain keys are derived yet — they will be created upon receiving the first message.
+    ///
+    /// # Arguments
+    ///
+    /// * `shared_secret` - Pre-shared secret (e.g., from X3DH).
+    /// * `dh_self`       - Our long-term or initial DH key pair.
+    ///
+    /// # Returns
+    ///
+    /// A new `RatchetState` ready to receive the first message.
     pub fn init_receiver(shared_secret: [u8; 32], dh_self: DhKeyPair) -> Self {
         Self {
             root_key: shared_secret,
@@ -83,6 +112,11 @@ impl RatchetState {
         }
     }
 
+    /// Performs a receiving-side DH ratchet when a new remote DH public key is observed.
+    ///
+    /// # Arguments
+    ///
+    /// * `remote_pub` - The new DH public key from the sender.
     pub fn dh_ratchet_receive(&mut self, remote_pub: PublicKey) {
         let dh_out = self.dh_self.dh(&remote_pub);
         let (new_root, recv_chain) = kdf_root(&self.root_key, &dh_out);
@@ -94,6 +128,8 @@ impl RatchetState {
         self.msg_recv = 0;
     }
 
+    /// Performs a sending-side DH ratchet (generates new key pair and advances root key).
+    /// Called automatically when sending but no active sending chain exists.
     pub fn dh_ratchet_send(&mut self) {
         let remote = self.dh_remote.expect("no remote DH key");
 
@@ -105,6 +141,19 @@ impl RatchetState {
         self.sending_chain = Some(send_chain);
     }
 
+    /// Encrypts a plaintext message.
+    ///
+    /// Automatically performs a DH ratchet if the sending direction has changed.
+    ///
+    /// # Arguments
+    ///
+    /// * `plaintext` - The message to encrypt.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// * The ciphertext prefixed with the nonce.
+    /// * The `Header` that must be sent alongside the ciphertext.
     pub fn encrypt_message(&mut self, plaintext: &[u8]) -> (Vec<u8>, Header) {
         if self.sending_chain.is_none() {
             self.dh_ratchet_send();
@@ -133,6 +182,19 @@ impl RatchetState {
         (ciphertext_with_nonce, header)
     }
 
+    /// Decrypts a received message.
+    ///
+    /// Handles DH ratcheting, skipped messages, and replay protection.
+    ///
+    /// # Arguments
+    ///
+    /// * `ciphertext_with_nonce` - Ciphertext prefixed with 12-byte nonce.
+    /// * `header`                - The header received with the message.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(plaintext)` on success.
+    /// * `Err(String)` on failure (e.g., authentication error, replay, too many skipped).
     pub fn decrypt_message(
         &mut self,
         ciphertext_with_nonce: &[u8],
@@ -168,6 +230,16 @@ impl RatchetState {
         decrypt(&message_key, ciphertext, nonce, header.as_bytes())
     }
 
+    /// Advances the receiving chain and stores skipped message keys.
+    ///
+    /// # Arguments
+    ///
+    /// * `until` - The message number to skip up to (exclusive).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(&'static str)` if too many messages would be skipped (DoS protection).
     pub fn skip_message_keys(&mut self, until: u32) -> Result<(), &'static str> {
         const MAX_SKIP: u32 = 10;
 

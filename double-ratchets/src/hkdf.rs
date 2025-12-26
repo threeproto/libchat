@@ -3,6 +3,16 @@ use sha2::Sha256;
 
 const DOMAIN_ROOT: &[u8] = b"DoubleRatchetRootKey";
 
+/// Derive a new root key and chain key from the given root key and Diffie-Hellman shared secret.
+///
+/// # Arguments
+///
+/// * `root` - The current root key.
+/// * `dh` - The Diffie-Hellman shared secret.
+///
+/// # Returns
+///
+/// A tuple containing the new root key and chain key.
 pub fn kdf_root(root: &[u8; 32], dh: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     let hk = Hkdf::<Sha256>::new(Some(root), dh);
 
@@ -16,6 +26,15 @@ pub fn kdf_root(root: &[u8; 32], dh: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     (new_root, chain)
 }
 
+/// Derive a new chain key from the given chain key.
+///
+/// # Arguments
+///
+/// * `chain` - The current chain key.
+///
+/// # Returns
+///
+/// A tuple containing the new chain key and message key.
 pub fn kdf_chain(chain: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     let hk = Hkdf::<Sha256>::new(None, chain);
 
@@ -25,7 +44,7 @@ pub fn kdf_chain(chain: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     hk.expand(&[0x01], &mut msg_key).unwrap();
     hk.expand(&[0x02], &mut next_chain).unwrap();
 
-    (msg_key, next_chain)
+    (next_chain, msg_key)
 }
 
 #[cfg(test)]
@@ -83,7 +102,7 @@ mod tests {
     fn test_kdf_chain_deterministic() {
         let chain = [0xff; 32];
 
-        let (msg_key, next_chain) = kdf_chain(&chain);
+        let (next_chain, msg_key) = kdf_chain(&chain);
 
         let expected_msg_key = [
             59, 94, 15, 96, 71, 100, 166, 72, 61, 235, 228, 226, 68, 254, 106, 30, 142, 34, 35,
