@@ -1,6 +1,8 @@
 use hkdf::Hkdf;
 use sha2::Sha256;
 
+use crate::types::{ChainKey, MessageKey, RootKey, SharedSecret};
+
 const DOMAIN_ROOT: &[u8] = b"DoubleRatchetRootKey";
 
 /// Derive a new root key and chain key from the given root key and Diffie-Hellman shared secret.
@@ -13,7 +15,7 @@ const DOMAIN_ROOT: &[u8] = b"DoubleRatchetRootKey";
 /// # Returns
 ///
 /// A tuple containing the new root key and chain key.
-pub fn kdf_root(root: &[u8; 32], dh: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
+pub fn kdf_root(root: &RootKey, dh: &SharedSecret) -> (RootKey, ChainKey) {
     let hk = Hkdf::<Sha256>::new(Some(root), dh);
 
     let mut okm = [0u8; 64];
@@ -35,7 +37,7 @@ pub fn kdf_root(root: &[u8; 32], dh: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
 /// # Returns
 ///
 /// A tuple containing the new chain key and message key.
-pub fn kdf_chain(chain: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
+pub fn kdf_chain(chain: &ChainKey) -> (ChainKey, MessageKey) {
     let hk = Hkdf::<Sha256>::new(None, chain);
 
     let mut msg_key = [0u8; 32];

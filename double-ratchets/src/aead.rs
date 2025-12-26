@@ -1,7 +1,9 @@
 use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
+    ChaCha20Poly1305, Key, Nonce as ChaChaNonce,
     aead::{Aead, KeyInit},
 };
+
+use crate::types::{MessageKey, Nonce};
 
 /// Encrypts plaintext with the given key and AAD.
 ///
@@ -14,12 +16,12 @@ use chacha20poly1305::{
 /// # Returns
 ///
 /// A tuple containing the ciphertext and the randomly generated nonce.
-pub fn encrypt(message_key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> (Vec<u8>, [u8; 12]) {
+pub fn encrypt(message_key: &MessageKey, plaintext: &[u8], aad: &[u8]) -> (Vec<u8>, Nonce) {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(message_key));
-    let nonce = rand::random::<[u8; 12]>();
+    let nonce = rand::random::<Nonce>();
     let ciphertext = cipher
         .encrypt(
-            Nonce::from_slice(&nonce),
+            ChaChaNonce::from_slice(&nonce),
             chacha20poly1305::aead::Payload {
                 msg: plaintext,
                 aad,
@@ -42,15 +44,15 @@ pub fn encrypt(message_key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> (Vec<u8>
 ///
 /// Ok(plaintext) on success, Err on authentication or decryption failure.
 pub fn decrypt(
-    message_key: &[u8; 32],
+    message_key: &MessageKey,
     ciphertext: &[u8],
-    nonce: &[u8; 12],
+    nonce: &Nonce,
     aad: &[u8],
 ) -> Result<Vec<u8>, String> {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(message_key));
     cipher
         .decrypt(
-            Nonce::from_slice(nonce),
+            ChaChaNonce::from_slice(nonce),
             chacha20poly1305::aead::Payload {
                 msg: ciphertext,
                 aad,

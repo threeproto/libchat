@@ -6,6 +6,7 @@ use crate::{
     aead::{decrypt, encrypt},
     hkdf::{kdf_chain, kdf_root},
     keypair::DhKeyPair,
+    types::{ChainKey, MessageKey, Nonce, RootKey, SharedSecret},
 };
 
 /// Represents the local state of the Double Ratchet algorithm for one conversation.
@@ -15,10 +16,10 @@ use crate::{
 /// secrecy and post-compromise security.
 #[derive(Clone)]
 pub struct RatchetState {
-    pub root_key: [u8; 32],
+    pub root_key: RootKey,
 
-    pub sending_chain: Option<[u8; 32]>,
-    pub receiving_chain: Option<[u8; 32]>,
+    pub sending_chain: Option<ChainKey>,
+    pub receiving_chain: Option<ChainKey>,
 
     pub dh_self: DhKeyPair,
     pub dh_remote: Option<PublicKey>,
@@ -27,7 +28,7 @@ pub struct RatchetState {
     pub msg_recv: u32,
     pub prev_chain_len: u32,
 
-    pub skipped_keys: HashMap<(PublicKey, u32), [u8; 32]>,
+    pub skipped_keys: HashMap<(PublicKey, u32), MessageKey>,
 }
 
 /// Public header attached to every encrypted message (unencrypted but authenticated).
@@ -58,7 +59,7 @@ impl RatchetState {
     /// # Returns
     ///
     /// A new `RatchetState` ready to send the first message.
-    pub fn init_sender(shared_secret: [u8; 32], remote_pub: PublicKey) -> Self {
+    pub fn init_sender(shared_secret: SharedSecret, remote_pub: PublicKey) -> Self {
         let dh_self = DhKeyPair::generate();
 
         // Initial DH
@@ -94,7 +95,7 @@ impl RatchetState {
     /// # Returns
     ///
     /// A new `RatchetState` ready to receive the first message.
-    pub fn init_receiver(shared_secret: [u8; 32], dh_self: DhKeyPair) -> Self {
+    pub fn init_receiver(shared_secret: SharedSecret, dh_self: DhKeyPair) -> Self {
         Self {
             root_key: shared_secret,
 
@@ -202,7 +203,7 @@ impl RatchetState {
     ) -> Result<Vec<u8>, String> {
         assert!(ciphertext_with_nonce.len() >= 12, "ciphertext too short");
         let (nonce_slice, ciphertext) = ciphertext_with_nonce.split_at(12);
-        let nonce: &[u8; 12] = nonce_slice.try_into().unwrap();
+        let nonce: &Nonce = nonce_slice.try_into().unwrap();
 
         let key_id = (header.dh_pub, header.msg_num);
         if let Some(msg_key) = self.skipped_keys.remove(&key_id) {
@@ -265,7 +266,7 @@ impl RatchetState {
 mod tests {
     use super::*;
 
-    fn setup_alice_bob() -> (RatchetState, RatchetState, [u8; 32]) {
+    fn setup_alice_bob() -> (RatchetState, RatchetState, SharedSecret) {
         // Simulate pre-shared secret (e.g., from X3DH)
         let shared_secret = [0x42; 32];
 

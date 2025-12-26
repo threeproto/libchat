@@ -4,6 +4,7 @@ mod aead;
 mod hkdf;
 mod keypair;
 mod state;
+mod types;
 
 fn main() {
     // === Initial shared secret (X3DH / prekey result in real systems) ===

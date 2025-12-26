@@ -1,6 +1,8 @@
 use rand_core::OsRng;
 use x25519_dalek::{PublicKey, StaticSecret};
 
+use crate::types::SharedSecret;
+
 #[derive(Clone)]
 pub struct DhKeyPair {
     pub secret: StaticSecret,
@@ -14,7 +16,7 @@ impl DhKeyPair {
         Self { secret, public }
     }
 
-    pub fn dh(&self, their_public: &PublicKey) -> [u8; 32] {
+    pub fn dh(&self, their_public: &PublicKey) -> SharedSecret {
         self.secret.diffie_hellman(their_public).to_bytes()
     }
 }
